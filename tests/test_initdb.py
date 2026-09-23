@@ -350,7 +350,7 @@ def test_initdb_holds_advisory_lock_during_database_check_and_creation():
         events.append(("create", args[0]))
 
     with mock.patch.object(initdb, "pg_connect", fake_pg_connect):
-        with mock.patch.object(initdb, "advisory_lock", fake_advisory_lock):
+        with mock.patch.object(initdb, "db_update_lock", fake_advisory_lock):
             with mock.patch.object(initdb, "db_exists", side_effect=check_database):
                 with mock.patch.object(initdb, "odoo_createdb", create_database):
                     result = CliRunner().invoke(
@@ -360,10 +360,10 @@ def test_initdb_holds_advisory_lock_during_database_check_and_creation():
 
     assert result.exit_code == 0, result.output
     assert events == [
-        ("lock", "click-odoo-initdb/" + TEST_DBNAME_NEW),
+        ("lock", "click-odoo-update/" + TEST_DBNAME_NEW),
         ("exists", TEST_DBNAME_NEW),
         ("create", TEST_DBNAME_NEW),
-        ("unlock", "click-odoo-initdb/" + TEST_DBNAME_NEW),
+        ("unlock", "click-odoo-update/" + TEST_DBNAME_NEW),
     ]
 
 

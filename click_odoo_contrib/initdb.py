@@ -13,7 +13,13 @@ import click
 import click_odoo
 from click_odoo import odoo
 
-from ._dbutils import advisory_lock, db_exists, db_initialized, pg_connect
+from ._dbutils import (
+    advisory_lock,
+    db_exists,
+    db_initialized,
+    db_update_lock,
+    pg_connect,
+)
 from .manifest import expand_dependencies
 from .update import DbLockWatcher, _save_installed_checksums
 
@@ -161,7 +167,7 @@ def refresh_module_list(dbname):
 @contextlib.contextmanager
 def _initdb_lock(dbname):
     if dbname:
-        with pg_connect() as pgcr, advisory_lock(pgcr, "click-odoo-initdb/" + dbname):
+        with pg_connect() as pgcr, db_update_lock(pgcr, dbname):
             yield
     else:
         yield
