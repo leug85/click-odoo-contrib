@@ -161,9 +161,7 @@ def refresh_module_list(dbname):
 @contextlib.contextmanager
 def _initdb_lock(dbname):
     if dbname:
-        with pg_connect() as pgcr, advisory_lock(
-            pgcr, "click-odoo-initdb/" + dbname
-        ):
+        with pg_connect() as pgcr, advisory_lock(pgcr, "click-odoo-initdb/" + dbname):
             yield
     else:
         yield
