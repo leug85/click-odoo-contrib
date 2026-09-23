@@ -1,6 +1,7 @@
 # Copyright 2018 ACSONE SA/NV (<http://acsone.eu>)
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl.html).
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -326,6 +327,44 @@ def test_watcher_option_passed_to_create_db():
             )
     assert result.exit_code == 0, result.output
     assert create_db.call_args[1]["watcher_max_seconds"] == 42
+
+
+def test_initdb_holds_advisory_lock_during_database_check_and_creation():
+    events = []
+
+    @contextlib.contextmanager
+    def fake_pg_connect():
+        yield object()
+
+    @contextlib.contextmanager
+    def fake_advisory_lock(pgcr, name):
+        events.append(("lock", name))
+        yield
+        events.append(("unlock", name))
+
+    def check_database(dbname):
+        events.append(("exists", dbname))
+        return False
+
+    def create_database(*args, **kwargs):
+        events.append(("create", args[0]))
+
+    with mock.patch.object(initdb, "pg_connect", fake_pg_connect):
+        with mock.patch.object(initdb, "advisory_lock", fake_advisory_lock):
+            with mock.patch.object(initdb, "db_exists", side_effect=check_database):
+                with mock.patch.object(initdb, "odoo_createdb", create_database):
+                    result = CliRunner().invoke(
+                        main,
+                        ["--no-cache", "-n", TEST_DBNAME_NEW],
+                    )
+
+    assert result.exit_code == 0, result.output
+    assert events == [
+        ("lock", "click-odoo-initdb/" + TEST_DBNAME_NEW),
+        ("exists", TEST_DBNAME_NEW),
+        ("create", TEST_DBNAME_NEW),
+        ("unlock", "click-odoo-initdb/" + TEST_DBNAME_NEW),
+    ]
 
 
 def test_dbcache_add_concurrency(pgdb, dbcache):

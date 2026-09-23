@@ -158,6 +158,17 @@ def refresh_module_list(dbname):
         env["ir.module.module"].update_list()
 
 
+@contextlib.contextmanager
+def _initdb_lock(dbname):
+    if dbname:
+        with pg_connect() as pgcr, advisory_lock(
+            pgcr, "click-odoo-initdb/" + dbname
+        ):
+            yield
+    else:
+        yield
+
+
 class DbCache:
     """Manage a cache of db templates.
 
@@ -471,6 +482,37 @@ def main(
         )
     if new_database:
         check_dbname(new_database)
+    with _initdb_lock(new_database):
+        _initdb(
+            new_database,
+            modules,
+            demo,
+            cache,
+            cache_prefix,
+            cache_max_age,
+            cache_max_size,
+            unless_exists,
+            unless_initialized,
+            attachments_in_db,
+            attachments_in_db_persistent,
+            watcher_max_seconds,
+        )
+
+
+def _initdb(
+    new_database,
+    modules,
+    demo,
+    cache,
+    cache_prefix,
+    cache_max_age,
+    cache_max_size,
+    unless_exists,
+    unless_initialized,
+    attachments_in_db,
+    attachments_in_db_persistent,
+    watcher_max_seconds,
+):
     exists = db_exists(new_database)
     if exists:
         if unless_exists:
