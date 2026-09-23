@@ -98,7 +98,6 @@ def odoo_createdb(
                 click.style(f"Created new Odoo database {dbname}.", fg="green")
             )
             _logger.info(
-
                 click.style(f"Initialized Odoo database {dbname}.", fg="green")
             )
         with odoo.sql_db.db_connect(dbname).cursor() as cr:
