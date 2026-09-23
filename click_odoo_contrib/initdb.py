@@ -21,7 +21,7 @@ from ._dbutils import (
     pg_connect,
 )
 from .manifest import expand_dependencies
-from .update import DbLockWatcher, _save_installed_checksums
+from .update import _save_installed_checksums
 
 _logger = logging.getLogger(__name__)
 
@@ -73,57 +73,46 @@ def odoo_createdb(
     exists,
     *,
     force_db_storage_persistent=False,
-    watcher_max_seconds=0,
 ):
     with _patch_ir_attachment_store(force_db_storage):
         if not exists:
             odoo.service.db._create_empty_database(dbname)
-        watcher = None
-        if watcher_max_seconds > 0:
-            watcher = DbLockWatcher(dbname, watcher_max_seconds)
-            watcher.start()
-        try:
-            if odoo.release.version_info >= (19, 0):
-                odoo.tools.config["with_demo"] = demo
-                odoo.modules.registry.Registry.new(
-                    dbname,
-                    new_db_demo=demo,
-                    update_module=True,
-                    install_modules=module_names,
+        if odoo.release.version_info >= (19, 0):
+            odoo.tools.config["with_demo"] = demo
+            odoo.modules.registry.Registry.new(
+                dbname,
+                new_db_demo=demo,
+                update_module=True,
+                install_modules=module_names,
+            )
+        else:
+            odoo.tools.config["without_demo"] = not demo
+            odoo.tools.config["init"] = dict.fromkeys(module_names, 1)
+            odoo.modules.registry.Registry.new(
+                dbname,
+                force_demo=demo,
+                update_module=True,
+            )
+        if not exists:
+            _logger.info(
+                click.style(f"Created new Odoo database {dbname}.", fg="green")
+            )
+            _logger.info(
+
+                click.style(f"Initialized Odoo database {dbname}.", fg="green")
+            )
+        with odoo.sql_db.db_connect(dbname).cursor() as cr:
+            _save_installed_checksums(cr)
+            if force_db_storage_persistent:
+                cr.execute(
+                    """
+                    INSERT INTO ir_config_parameter (key, value)
+                    VALUES (%s, %s)
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                    """,
+                    ("ir_attachment.location", "db"),
                 )
-            else:
-                odoo.tools.config["without_demo"] = not demo
-                odoo.tools.config["init"] = dict.fromkeys(module_names, 1)
-                odoo.modules.registry.Registry.new(
-                    dbname,
-                    force_demo=demo,
-                    update_module=True,
-                )
-            if watcher and watcher.aborted:
-                raise click.Abort("Initialization aborted by watcher, check logs")
-            if not exists:
-                _logger.info(
-                    click.style(f"Created new Odoo database {dbname}.", fg="green")
-                )
-            else:
-                _logger.info(
-                    click.style(f"Initialized Odoo database {dbname}.", fg="green")
-                )
-            with odoo.sql_db.db_connect(dbname).cursor() as cr:
-                _save_installed_checksums(cr)
-                if force_db_storage_persistent:
-                    cr.execute(
-                        """
-                        INSERT INTO ir_config_parameter (key, value)
-                        VALUES (%s, %s)
-                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-                        """,
-                        ("ir_attachment.location", "db"),
-                    )
-        finally:
-            if watcher:
-                watcher.stop()
-            odoo.sql_db.close_db(dbname)
+        odoo.sql_db.close_db(dbname)
 
 
 def _fnmatch(filename, patterns):
@@ -421,15 +410,6 @@ class DbCache:
     ),
 )
 @click.option(
-    "--watcher-max-seconds",
-    default=0,
-    type=float,
-    help=(
-        "Max DB lock seconds allowed before aborting the initialization process. "
-        "Default: 0 (disabled)."
-    ),
-)
-@click.option(
     "--unless-exists",
     is_flag=True,
     help=(
@@ -458,7 +438,6 @@ def main(
     unless_initialized,
     attachments_in_db,
     attachments_in_db_persistent,
-    watcher_max_seconds,
 ):
     """Create or initialize an Odoo database with pre-installed modules.
 
@@ -477,8 +456,6 @@ def main(
     the database exists and is already initialized, otherwise it initializes
     Odoo in the existing database.
 
-    Use --watcher-max-seconds to abort initialization if a database lock blocks
-    a query longer than the specified number of seconds.
     """
     if unless_exists and unless_initialized:
         raise click.ClickException(
@@ -499,7 +476,6 @@ def main(
             unless_initialized,
             attachments_in_db,
             attachments_in_db_persistent,
-            watcher_max_seconds,
         )
 
 
@@ -515,7 +491,6 @@ def _initdb(
     unless_initialized,
     attachments_in_db,
     attachments_in_db_persistent,
-    watcher_max_seconds,
 ):
     exists = db_exists(new_database)
     if exists:
@@ -551,7 +526,6 @@ def _initdb(
                 force_db_storage=attachments_in_db or attachments_in_db_persistent,
                 force_db_storage_persistent=attachments_in_db_persistent,
                 exists=exists,
-                watcher_max_seconds=watcher_max_seconds,
             )
         else:
             _logger.info(
@@ -579,7 +553,6 @@ def _initdb(
                         force_db_storage=True,
                         force_db_storage_persistent=attachments_in_db_persistent,
                         exists=exists,
-                        watcher_max_seconds=watcher_max_seconds,
                     )
                     dbcache.add(new_database, hashsum)
             if cache_max_size >= 0:

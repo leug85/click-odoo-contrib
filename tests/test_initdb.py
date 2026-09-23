@@ -312,23 +312,6 @@ def test_create_cmd_nocache(dbcache):
         _dropdb(TEST_DBNAME_NEW)
 
 
-def test_watcher_option_passed_to_create_db():
-    with mock.patch.object(initdb, "db_exists", return_value=False):
-        with mock.patch.object(initdb, "odoo_createdb") as create_db:
-            result = CliRunner().invoke(
-                main,
-                [
-                    "--no-cache",
-                    "-n",
-                    TEST_DBNAME_NEW,
-                    "--watcher-max-seconds",
-                    "42",
-                ],
-            )
-    assert result.exit_code == 0, result.output
-    assert create_db.call_args[1]["watcher_max_seconds"] == 42
-
-
 def test_initdb_holds_advisory_lock_during_database_check_and_creation():
     events = []
 
