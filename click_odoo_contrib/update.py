@@ -36,7 +36,7 @@ class DbLockWatcher(threading.Thread):
         self.database = database
         self.max_seconds = max_seconds
         self.aborted = False
-        self.watching = False
+        self.watching = True
 
     def stop(self):
         self.watching = False
@@ -93,7 +93,6 @@ class DbLockWatcher(threading.Thread):
             watcher_conn.set_isolation_level(
                 psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
             )
-            self.watching = True
             while self.watching:
                 # Wait some time before checking locks
                 sleep(beat)
